@@ -1,26 +1,33 @@
 package expression;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public abstract class Node {
+    @NotNull
     private final String name;
+
+    @NotNull
     private final List<Node> children;
 
     Node(String name) {
         this(name, new ArrayList<>());
     }
 
-    Node(String name, List<Node> children) {
+    Node(@NotNull String name, @NotNull List<Node> children) {
         this.name = name;
         this.children = children;
     }
 
-    String getName() {
+    @NotNull
+    public String getName() {
         return name;
     }
 
-    public List<Node> getChildren() {
+    @NotNull
+    protected List<Node> getChildren() {
         return children;
     }
 

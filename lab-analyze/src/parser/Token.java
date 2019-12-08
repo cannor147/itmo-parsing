@@ -1,3 +1,5 @@
+package parser;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -7,11 +9,11 @@ public enum Token {
 
     private final Map<String, String> parameters = new HashMap<>();
 
-    public void setName(String name) {
-        parameters.put("name", name);
+    public String getName() {
+        return parameters.get("name");
     }
 
-    public String getName(String name) {
-        return parameters.get(name);
+    public void setName(String name) {
+        parameters.put("name", name);
     }
 }

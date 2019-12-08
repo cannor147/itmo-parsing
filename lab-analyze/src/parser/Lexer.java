@@ -1,14 +1,14 @@
-import jdk.internal.util.xml.impl.ReaderUTF8;
+package parser;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 
 public class Lexer {
-    private Reader reader;
+    private static final char END_SYMBOL = '$';
+    private final InputStream inputStream;
     private int position;
     private char symbol;
     private Token currentToken;
@@ -18,14 +18,24 @@ public class Lexer {
     }
 
     public Lexer(InputStream inputStream) throws ParseException {
-        this.reader = new ReaderUTF8(inputStream);
+        this.inputStream = inputStream;
         this.position = 0;
         this.currentToken = Token.START;
         nextSymbol();
     }
 
+    public int getPosition() {
+        return position;
+    }
+
+    public Token current() {
+        return currentToken;
+    }
+
     public Token next() throws ParseException {
-        if (symbol == '*') {
+        if (symbol == END_SYMBOL) {
+            currentToken = Token.END;
+        } else if (symbol == '*') {
             currentToken = Token.ASTERISK;
             nextSymbol();
         } else if (symbol == ',') {
@@ -34,36 +44,38 @@ public class Lexer {
         } else if (symbol == ';') {
             currentToken = Token.SEMICOLON;
             nextSymbol();
-        } else if (isWordSymbol()) {
+        } else if (isWordSymbol() && !isDigit()) {
             StringBuilder stringBuilder = new StringBuilder();
-            while (isWordSymbol()) {
+            boolean whiteSpace = false;
+            while (isWordSymbol() && !whiteSpace) {
                 stringBuilder.append(symbol);
-                nextSymbol();
+                whiteSpace = nextSymbol();
             }
             currentToken = Token.WORD;
             currentToken.setName(stringBuilder.toString());
         } else if (currentToken != Token.END) {
-            throw new ParseException("Can't parse symbol '" + symbol + "'", position);
+            throw new ParseException("Unexpected token '" + symbol + "'.", position);
         }
 
         return currentToken;
     }
 
-    private void nextSymbol() throws ParseException {
+    private boolean nextSymbol() throws ParseException {
         try {
-            boolean f = true;
-            while (f) {
-                int x = reader.read();
+            boolean whiteSpace = false;
+            while (true) {
+                int x = inputStream.read();
                 if (x == -1) {
-                    currentToken = Token.END;
-                    symbol = '$';
+                    symbol = END_SYMBOL;
                 } else {
                     symbol = (char) x;
                     position++;
                 }
 
                 if (!Character.isWhitespace(symbol)) {
-                    f = false;
+                    return whiteSpace;
+                } else {
+                    whiteSpace = true;
                 }
             }
         } catch (IOException e) {
@@ -73,5 +85,9 @@ public class Lexer {
 
     private boolean isWordSymbol() {
         return Character.isLetterOrDigit(symbol) || symbol == '_';
+    }
+
+    private boolean isDigit() {
+        return Character.isDigit(symbol);
     }
 }

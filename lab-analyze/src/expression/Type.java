@@ -1,7 +1,9 @@
 package expression;
 
+import org.jetbrains.annotations.NotNull;
+
 public class Type extends Node {
-    public Type(String name) {
+    public Type(@NotNull String name) {
         super(name);
     }
 

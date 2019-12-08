@@ -1,0 +1,9 @@
+Program -> Description R
+R -> ''
+R -> Description R
+Description -> Type Variable L ;
+L -> ''
+L -> , Variable L
+Type -> word
+Variable -> word
+Variable -> * Variable
