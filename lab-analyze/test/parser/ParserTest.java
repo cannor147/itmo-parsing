@@ -113,7 +113,7 @@ class ParserTest {
             Type type = new Type(generateWord());
             List<Variable> variables = new ArrayList<>();
             for (int j = 0; j < n; j++) {
-                variables.add(new Variable(random.nextInt(32), generateWord()));
+                variables.add(new Variable(random.nextInt(8), generateWord()));
             }
             descriptions.add(new Description(i + 1, type, variables));
         }
@@ -176,9 +176,9 @@ class ParserTest {
         assert expectedVariables.size() == actualVariables.size();
 
         for (int i = 0; i < expectedVariables.size(); i++) {
-            Variable expectedVariale = expectedVariables.get(i);
-            Variable actualVariale = actualVariables.get(i);
-            assertVariableEquals(expectedVariale, actualVariale);
+            Variable expectedVariable = expectedVariables.get(i);
+            Variable actualVariable = actualVariables.get(i);
+            assertVariableEquals(expectedVariable, actualVariable);
         }
     }
 

@@ -5,9 +5,7 @@ import expression.Program;
 import expression.Type;
 import expression.Variable;
 
-import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +14,8 @@ public class Parser {
     private Lexer lexer;
 
     public Program parse(String text) throws ParseException {
-        return parse(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)));
+        lexer = new Lexer(text);
+        return parseProgram();
     }
 
     public Program parse(InputStream inputStream) throws ParseException {
