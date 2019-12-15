@@ -31,6 +31,16 @@ public abstract class Node {
         return children;
     }
 
+    public void printTree() {
+        System.out.println(findTree(0));
+    }
+
+    protected String getTabs(int x) {
+        return "|\t".repeat(x);
+    }
+
+    protected abstract String findTree(int x);
+
     @Override
     public String toString() {
         return name + '(' + children + ')';

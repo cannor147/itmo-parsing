@@ -15,6 +15,16 @@ public class Variable extends Node {
     }
 
     @Override
+    protected String findTree(int x) {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (int i = 0; i < pointers; i++) {
+            stringBuilder.append(getTabs(x + i)).append("@Pointer *").append(System.lineSeparator());
+        }
+        stringBuilder.append(getTabs(x + pointers)).append("@Variable ").append(getName());
+        return stringBuilder.toString();
+    }
+
+    @Override
     public String toString() {
         return "*".repeat(pointers) + getName();
     }

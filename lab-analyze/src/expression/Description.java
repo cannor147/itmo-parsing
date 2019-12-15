@@ -21,6 +21,19 @@ public class Description extends Node {
     }
 
     @Override
+    protected String findTree(int x) {
+        StringBuilder stringBuilder = new StringBuilder(getTabs(x));
+        stringBuilder.append("@Description ").append(getName()).append(System.lineSeparator());
+        stringBuilder.append(getType().findTree(x + 1));
+
+        for (Variable variable : getVariables()) {
+            stringBuilder.append(System.lineSeparator());
+            stringBuilder.append(variable.findTree(x + 1));
+        }
+        return stringBuilder.toString();
+    }
+
+    @Override
     public String toString() {
         return getType().toString() + " " + getVariables().stream().map(Node::toString).collect(Collectors.joining(", ")) + ";";
     }

@@ -45,7 +45,6 @@ class ParserTest {
         internalTest("int ****1", null);
 
         internalTest(", a, *b, c;", null);
-        internalTest("int int, int, int;", constructSimpleProgram("int", "int", "int", "int"));
         internalTest("string _string;", constructSimpleProgram("string", "_string"));
         internalTest("_string string;", constructSimpleProgram("_string", "string"));
 
@@ -68,6 +67,33 @@ class ParserTest {
 
         internalTest("int x,y,z;", constructSimpleProgram("int", "x", "y", "z"));
         internalTest("int*x,y,z;", constructSimpleProgram("int", "*x", "y", "z"));
+
+        Program program114 = constructSimpleProgram("ParseException", "e");
+        Program program115 = constructSimpleProgram("IllegalArgumentException", "*ignored");
+        Program program116 = new Program("test", List.of(program114.getDescriptions().get(0), program115.getDescriptions().get(0)));
+        internalTest("ParseException e;", program114);
+        internalTest("IllegalArgumentException *ignored;", program115);
+        internalTest("ParseException e;IllegalArgumentException *ignored;", program116);
+
+        internalTest("int x;", constructSimpleProgram("int", "x"));
+        internalTest("long x;", constructSimpleProgram("long", "x"));
+        internalTest("long int x;", constructSimpleProgram("long int", "x"));
+        internalTest("long long x;", constructSimpleProgram("long long", "x"));
+        internalTest("long long int x;", constructSimpleProgram("long long int", "x"));
+        internalTest("unsigned x;", constructSimpleProgram("unsigned", "x"));
+        internalTest("unsigned int x;", constructSimpleProgram("unsigned int", "x"));
+        internalTest("unsigned long x;", constructSimpleProgram("unsigned long", "x"));
+        internalTest("unsigned long int x;", constructSimpleProgram("unsigned long int", "x"));
+        internalTest("unsigned long long x;", constructSimpleProgram("unsigned long long", "x"));
+        internalTest("unsigned long long int x;", constructSimpleProgram("unsigned long long int", "x"));
+
+        internalTest("long unsigned int x;", null);
+        internalTest("long unsigned x;", null);
+        internalTest("int unsigned x;", null);
+        internalTest("int long x;", null);
+        internalTest("unsinged long x;", null);
+        internalTest("long long;", null);
+        internalTest("long int;", null);
     }
 
     @Test

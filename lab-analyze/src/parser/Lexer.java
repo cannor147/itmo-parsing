@@ -51,8 +51,23 @@ public class Lexer {
                 stringBuilder.append(symbol);
                 whiteSpace = nextSymbol();
             }
-            currentToken = Token.WORD;
-            currentToken.setName(stringBuilder.toString());
+
+            String word = stringBuilder.toString();
+            switch (word) {
+                case "int":
+                    currentToken = Token.INT;
+                    break;
+                case "long":
+                    currentToken = Token.LONG;
+                    break;
+                case "unsigned":
+                    currentToken = Token.UNSIGNED;
+                    break;
+                default:
+                    currentToken = Token.WORD;
+                    currentToken.setName(word);
+                    break;
+            }
         } else if (currentToken != Token.END) {
             throw new ParseException("Unexpected token '" + symbol + "'.", position);
         }

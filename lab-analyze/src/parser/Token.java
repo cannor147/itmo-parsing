@@ -5,7 +5,16 @@ import java.util.Map;
 
 public enum Token {
     START, END,
-    WORD, ASTERISK, COMMA, SEMICOLON;
+    WORD, ASTERISK, COMMA, SEMICOLON,
+    LONG("long"), UNSIGNED("unsigned"), INT("int");
+
+    Token() {
+        // No operations;
+    }
+
+    Token(String name) {
+        setName(name);
+    }
 
     private final Map<String, String> parameters = new HashMap<>();
 
@@ -15,5 +24,9 @@ public enum Token {
 
     public void setName(String name) {
         parameters.put("name", name);
+    }
+
+    public boolean isWord() {
+        return this == WORD || this == LONG || this == UNSIGNED || this == INT;
     }
 }

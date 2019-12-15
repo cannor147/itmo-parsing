@@ -8,6 +8,11 @@ public class Type extends Node {
     }
 
     @Override
+    protected String findTree(int x) {
+        return getTabs(x) + "@Type " + getName();
+    }
+
+    @Override
     public String toString() {
         return getName();
     }
