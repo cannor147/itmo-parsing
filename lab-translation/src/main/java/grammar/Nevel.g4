@@ -55,11 +55,60 @@ grammar Nevel;
     }
 }
 
-program : (statement)+;
+program : (global_operation | function)+;
 
-function : FUN IDENTIFIER OPENING_BRACKET CLOSING_BRACKET OPENING_BRACE (statement)* CLOSING_BRACKET;
+function :
+    FUN
+    IDENTIFIER
+    OPENING_BRACKET arguments? CLOSING_BRACKET
+    (COLON IDENTIFIER)?
+    OPENING_BRACE
+    local_operation*
+    CLOSING_BRACE
+;
 
-statement : (DEF | VAR) IDENTIFIER ASIGN expression SEMICOLON+;
+global_operation : constant_defenition | variable_defenition;
+local_operation : constant_defenition | variable_defenition;
+
+if_statement :
+    IF
+    OPENING_BRACKET expression CLOSING_BRACKET
+    OPENING_BRACE
+    (local_operation)*
+    CLOSING_BRACE
+    (
+        ELSE
+        (
+            if_statement
+            |
+            OPENING_BRACE
+            (local_operation)*
+            CLOSING_BRACE
+        )
+    )?
+;
+
+constant_defenition :
+    CONST
+    IDENTIFIER (COLON IDENTIFIER)?
+    ASIGN expression
+    (
+        COMMA
+        IDENTIFIER (COLON IDENTIFIER)?
+        ASIGN expression
+    )*
+    SEMICOLON+
+;
+
+variable_defenition :
+    VAR
+    IDENTIFIER (COLON IDENTIFIER)?
+    (ASIGN expression)?
+    (COMMA IDENTIFIER (ASIGN expression)?)*
+    SEMICOLON+
+;
+
+arguments : IDENTIFIER COMMA IDENTIFIER (COMMA arguments)?;
 
 expression returns [Type type] :
     expression_ternary {
@@ -184,7 +233,6 @@ expression_binary_x returns [Type type] :
         ensureSubtype(Type.NUMBER, $expression_binary_y.type, _localctx, _ctx);
         $type = Type.BOOL;
     }
-    |
     |
     expression_binary_y {$type = $expression_binary_y.type;} LESS expression_binary_y {
         ensureEquals($type, $expression_binary_y.type, _localctx, _ctx);
@@ -372,7 +420,7 @@ BREAK : 'break';
 RETURN : 'retur';
 
 VAR : 'var';
-DEF : 'def';
+CONST : 'const';
 FUN : 'fun';
 
 SLASHN : '\\n';
