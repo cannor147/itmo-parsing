@@ -1,0 +1,6 @@
+var x = 17;
+var y = 6;
+
+fun main() : int {
+    var z = x + y * 2;
+}

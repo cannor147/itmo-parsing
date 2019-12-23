@@ -2,17 +2,28 @@ grammar Nevel;
 
 @header {
     import exception.*;
+    import type.*;
+    import java.util.HashMap;
+    import java.util.HashSet;
+    import java.util.ArrayList;
+    import java.util.Map;
+    import java.util.Set;
+    import java.util.List;
 }
 
 @members {
     private void error(String message, ParserRuleContext _localctx, ParserRuleContext _ctx) throws ParseException {
-        throw new exception.ParseException(
+        throw new ParseException(
             message,
             _localctx.start.getLine(),
             _localctx.start.getCharPositionInLine(),
-            _ctx.getStart().getText()
+            _ctx.start.getText()
         );
     }
+
+    private final Map<String, Type> variables = new HashMap<>();
+    private final Map<String, List<Type>> functions = new HashMap<>();
+    private final Set<String> constantVariables = new HashSet<>();
 
     private void ensureSubtype(Type expected, Type actual, ParserRuleContext _localctx, ParserRuleContext _ctx) throws ParseException {
         if ((expected.getCode() & actual.getCode()) != actual.getCode()) {
@@ -26,297 +37,264 @@ grammar Nevel;
         }
     }
 
-    enum Type {
-        BOOL(1),
-        BYTE(2),
-        SHORT(4),
-        INT(8),
-        LONG(16),
-        FLOAT(32),
-        DOUBLE(64),
-        CHAR(128),
-        STRING(256),
-
-        ALGEBRAIC(31),
-        INTEGER(30),
-        NUMBER(126),
-        PRIMITIVE(254),
-        ANY(Integer.MAX_VALUE);
-
-        private final int code;
-
-        Type(int code) {
-            this.code = code;
+    private void checkVariable(String name, ParserRuleContext _localctx, ParserRuleContext _ctx) throws ParseException {
+        if (!variables.containsKey(name)) {
+            error("Cannot resolve symbol " + name + ".", _localctx, _ctx);
         }
-
-        public int getCode() {
-            return code;
+        if (constantVariables.contains(name)) {
+            error("Cannot assign a value to const variable " + name + ".", _localctx, _ctx);
         }
+    }
+
+    private void defineVariable(String name, Type type) {
+        variables.put(name, type);
+    }
+
+    private void defineFunction(String name, List<Type> types) {
+        functions.put(name, types);
     }
 }
 
-program : (global_operation | function)+;
+program : (defineOperator | emptyOperator | function)+;
 
-function :
-    FUN
-    IDENTIFIER
-    OPENING_BRACKET arguments? CLOSING_BRACKET
-    (COLON IDENTIFIER)?
-    OPENING_BRACE
-    local_operation*
-    CLOSING_BRACE
+typeName returns [Type type] :
+    ( BOOL | BYTE | SHORT | INT | LONG | FLOAT | DOUBLE | CHAR | STRING | VOID )
+    { $type = Type.valueOf(_localctx.getChild(0).getText().toUpperCase()); }
+;
+variableName returns [String name] : IDENTIFIER { $name = _localctx.getChild(0).getText(); };
+functionName returns [String name] : IDENTIFIER { $name = _localctx.getChild(0).getText(); };
+
+function returns [List<Type> types, String name] :
+    FUN functionName { $name = $functionName.name; $types = new ArrayList(); $types.add(Type.VOID); }
+    OPENING_BRACKET
+    (declaration[false] { $types.add($declaration.type); } (COMMA declaration[false] { $types.add($declaration.type); })*)?
+    CLOSING_BRACKET
+    (COLON typeName { $types.set(0, $typeName.type); })?
+    block
+    { defineFunction($name, $types); }
 ;
 
-global_operation : constant_defenition | variable_defenition;
-local_operation : constant_defenition | variable_defenition;
+block : OPENING_BRACE (statement)* CLOSING_BRACE;
+statement : ifStatement | whileStatement | operatorStatement;
 
-if_statement :
-    IF
-    OPENING_BRACKET expression CLOSING_BRACKET
-    OPENING_BRACE
-    (local_operation)*
-    CLOSING_BRACE
+ifStatement : IF OPENING_BRACKET expression CLOSING_BRACKET (statement | block) (ELSE (statement | block))?;
+whileStatement : WHILE OPENING_BRACKET expression CLOSING_BRACKET (statement | block);
+operatorStatement :
+    incrementOperator | decrementOperator | assignOperator | callOperator | defineOperator |
+    continueOperator | breakOperator | returnOperator | emptyOperator
+;
+
+incrementOperator : variableName { checkVariable($variableName.name, _localctx, _ctx); } PLUS_PLUS SEMICOLON;
+decrementOperator : variableName { checkVariable($variableName.name, _localctx, _ctx); } MINUS_MINUS SEMICOLON;
+callOperator : callExpression SEMICOLON;
+emptyOperator : SEMICOLON;
+continueOperator : CONTINUE SEMICOLON;
+breakOperator : BREAK SEMICOLON;
+returnOperator : RETURN (expression)? SEMICOLON;
+defineOperator : (CONST initialization[true] (COMMA initialization[true])* | VAR definition[false] (COMMA definition[false])*) SEMICOLON;
+assignOperator : assignation SEMICOLON;
+
+definition[boolean constant] : declaration[$constant] | initialization[$constant];
+declaration[boolean constant] returns [Type type, String name] :
+    variableName { $name = $variableName.name; }
+    COLON typeName { $type = $typeName.type; defineVariable($name, $type); }
+;
+initialization[boolean constant] returns [Type type, String name] :
+    variableName { $name = $variableName.name; }
+    (COLON typeName { $type = $typeName.type; })?
+    ASSIGN expression {
+        if ($type == null) {
+            $type = $expression.type;
+        }
+        ensureEquals($type, $expression.type, _localctx, _ctx);
+        defineVariable($name, $type);
+    }
+;
+assignation returns [Type type] :
+    variableName { checkVariable($variableName.name, _localctx, _ctx); $type = variables.get($variableName.name); }
     (
-        ELSE
-        (
-            if_statement
-            |
-            OPENING_BRACE
-            (local_operation)*
-            CLOSING_BRACE
-        )
+        ASSIGN
+        |
+        (PLUS_ASSIGN | MINUS_ASSIGN | ASTERISK_ASSIGN | SLASH_ASSIGN | PERCENT_ASSIGN)
+        { ensureSubtype(Type.NUMBER, $type, _localctx, _ctx); }
+        |
+        (AND_ASSIGN | OR_ASSIGN | XOR_ASSIGN)
+        { ensureSubtype(Type.ALGEBRAIC, $type, _localctx, _ctx); }
+    )
+    expression { ensureEquals($type, $expression.type, _localctx, _ctx); }
+;
+
+expression returns [Type type] :
+    ternaryExpression {
+        $type = $ternaryExpression.type;
+    }
+;
+
+ternaryExpression returns [Type type] :
+    smartOrBinaryExpression {
+        $type = $smartOrBinaryExpression.type;
+    }
+    (
+        QUESTION_MARK smartOrBinaryExpression {
+            ensureSubtype(Type.BOOL, $type, _localctx, _ctx);
+            $type = $smartOrBinaryExpression.type;
+        }
+        COLON ternaryExpression {
+            ensureEquals($type, $ternaryExpression.type, _localctx, _ctx);
+        }
     )?
 ;
 
-constant_defenition :
-    CONST
-    IDENTIFIER (COLON IDENTIFIER)?
-    ASIGN expression
-    (
-        COMMA
-        IDENTIFIER (COLON IDENTIFIER)?
-        ASIGN expression
-    )*
-    SEMICOLON+
-;
-
-variable_defenition :
-    VAR
-    IDENTIFIER (COLON IDENTIFIER)?
-    (ASIGN expression)?
-    (COMMA IDENTIFIER (ASIGN expression)?)*
-    SEMICOLON+
-;
-
-arguments : IDENTIFIER COMMA IDENTIFIER (COMMA arguments)?;
-
-expression returns [Type type] :
-    expression_ternary {
-        $type = $expression_ternary.type;
-    }
-;
-
-expression_ternary returns [Type type] :
-    expression_binary_r {
-        ensureSubtype(Type.BOOL, $expression_binary_r.type, _localctx, _ctx);
+smartOrBinaryExpression returns [Type type] :
+    smartAndBinaryExpression {
+        $type = $smartAndBinaryExpression.type;
     }
     (
-        QUESTION expression_binary_r {
-            $type = $expression_binary_r.type;
-        }
-        COLON expression_binary_r {
-            ensureEquals($type, $expression_binary_r.type, _localctx, _ctx);
+        PIPE_PIPE smartAndBinaryExpression {
+            ensureEquals($type, $smartAndBinaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.BOOL, $smartAndBinaryExpression.type, _localctx, _ctx);
         }
     )*
 ;
 
-expression_binary_r returns [Type type] :
-    expression_binary_s {
-        $type = $expression_binary_s.type;
+smartAndBinaryExpression returns [Type type] :
+    orBinaryExpression {
+        $type = $orBinaryExpression.type;
     }
     (
-        SMART_OR expression_binary_s {
-            ensureEquals($type, $expression_binary_s.type, _localctx, _ctx);
-            ensureSubtype(Type.BOOL, $expression_binary_s.type, _localctx, _ctx);
+        AMPERSAND_AMPERSAND orBinaryExpression {
+            ensureEquals($type, $orBinaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.BOOL, $orBinaryExpression.type, _localctx, _ctx);
         }
     )*
 ;
 
-expression_binary_s returns [Type type] :
-    expression_binary_t {
-        $type = $expression_binary_t.type;
+orBinaryExpression returns [Type type] :
+    xorBinaryExpression {
+        $type = $xorBinaryExpression.type;
     }
     (
-        SMART_AND expression_binary_t {
-            ensureEquals($type, $expression_binary_t.type, _localctx, _ctx);
-            ensureSubtype(Type.BOOL, $expression_binary_t.type, _localctx, _ctx);
+        (OR | PIPE) xorBinaryExpression {
+            ensureEquals($type, $xorBinaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.ALGEBRAIC, $xorBinaryExpression.type, _localctx, _ctx);
         }
     )*
 ;
 
-expression_binary_t returns [Type type] :
-    expression_binary_u {
-        $type = $expression_binary_u.type;
+xorBinaryExpression returns [Type type] :
+    andBinaryExpression {
+        $type = $andBinaryExpression.type;
     }
     (
-        OR expression_binary_u {
-            ensureEquals($type, $expression_binary_u.type, _localctx, _ctx);
-            ensureSubtype(Type.ALGEBRAIC, $expression_binary_u.type, _localctx, _ctx);
+        (XOR | CARET) andBinaryExpression {
+            ensureEquals($type, $andBinaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.ALGEBRAIC, $andBinaryExpression.type, _localctx, _ctx);
         }
     )*
 ;
 
-expression_binary_u returns [Type type] :
-    expression_binary_v {
-        $type = $expression_binary_v.type;
+andBinaryExpression returns [Type type] :
+    equalityBinaryExpression {
+        $type = $equalityBinaryExpression.type;
     }
     (
-        XOR expression_binary_v {
-            ensureEquals($type, $expression_binary_v.type, _localctx, _ctx);
-            ensureSubtype(Type.ALGEBRAIC, $expression_binary_v.type, _localctx, _ctx);
+        (AND | AMPERSAND) equalityBinaryExpression {
+            ensureEquals($type, $equalityBinaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.ALGEBRAIC, $equalityBinaryExpression.type, _localctx, _ctx);
         }
     )*
 ;
 
-expression_binary_v returns [Type type] :
-    expression_binary_w {
-        $type = $expression_binary_w.type;
+equalityBinaryExpression returns [Type type] :
+    relationalBinaryExpression {
+        $type = $relationalBinaryExpression.type;
     }
     (
-        AND expression_binary_w {
-            ensureEquals($type, $expression_binary_w.type, _localctx, _ctx);
-            ensureSubtype(Type.ALGEBRAIC, $expression_binary_w.type, _localctx, _ctx);
-        }
-    )*
-;
-
-expression_binary_w returns [Type type] :
-    expression_binary_x {
-        $type = $expression_binary_x.type;
-    }
-    (
-        EQUALS expression_binary_x {
-            ensureEquals($type, $expression_binary_x.type, _localctx, _ctx);
-            $type = Type.BOOL;
-        }
-        |
-        NOT_EQUALS expression_binary_x {
-            ensureEquals($type, $expression_binary_x.type, _localctx, _ctx);
-            $type = Type.BOOL;
-        }
-        |
-        SUPER_EQUALS expression_binary_x {
-            ensureEquals($type, $expression_binary_x.type, _localctx, _ctx);
-            $type = Type.BOOL;
-        }
-        |
-        SUPER_NOT_EQUALS expression_binary_x {
-            ensureEquals($type, $expression_binary_x.type, _localctx, _ctx);
+        (EQUALS | NOT_EQUALS | SUPER_EQUALS | SUPER_NOT_EQUALS) relationalBinaryExpression {
+            ensureEquals($type, $relationalBinaryExpression.type, _localctx, _ctx);
             $type = Type.BOOL;
         }
     )*
 ;
 
-expression_binary_x returns [Type type] :
-    expression_binary_y {
-        $type = $expression_binary_y.type;
-    }
-    |
-    expression_binary_y {$type = $expression_binary_y.type;} GREATER expression_binary_y {
-        ensureEquals($type, $expression_binary_y.type, _localctx, _ctx);
-        ensureSubtype(Type.NUMBER, $expression_binary_y.type, _localctx, _ctx);
-        $type = Type.BOOL;
-    }
-    |
-    expression_binary_y {$type = $expression_binary_y.type;} GREATER_OR_EQUALS expression_binary_y {
-        ensureEquals($type, $expression_binary_y.type, _localctx, _ctx);
-        ensureSubtype(Type.NUMBER, $expression_binary_y.type, _localctx, _ctx);
-        $type = Type.BOOL;
-    }
-    |
-    expression_binary_y {$type = $expression_binary_y.type;} LESS expression_binary_y {
-        ensureEquals($type, $expression_binary_y.type, _localctx, _ctx);
-        ensureSubtype(Type.NUMBER, $expression_binary_y.type, _localctx, _ctx);
-        $type = Type.BOOL;
-    }
-    |
-    expression_binary_y {$type = $expression_binary_y.type;} LESS_OR_EQUALS expression_binary_y {
-        ensureEquals($type, $expression_binary_y.type, _localctx, _ctx);
-        ensureSubtype(Type.NUMBER, $expression_binary_y.type, _localctx, _ctx);
-        $type = Type.BOOL;
-    }
-;
-
-expression_binary_y returns [Type type] :
-    expression_binary_z {
-        $type = $expression_binary_z.type;
+relationalBinaryExpression returns [Type type] :
+    lowArithmeticBinaryExpression {
+        $type = $lowArithmeticBinaryExpression.type;
     }
     (
-        PLUS expression_binary_z {
-            ensureEquals($type, $expression_binary_z.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $expression_binary_z.type, _localctx, _ctx);
+        (GREATER | GREATER_OR_EQUALS | EQUALS_OR_GREATER | LESS | LESS_OR_EQUALS | EQUALS_OR_LESS) lowArithmeticBinaryExpression {
+            ensureEquals($type, $lowArithmeticBinaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.NUMBER, $lowArithmeticBinaryExpression.type, _localctx, _ctx);
+            $type = Type.BOOL;
         }
-        MINUS expression_binary_z {
-            ensureEquals($type, $expression_binary_z.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $expression_binary_z.type, _localctx, _ctx);
+    )?
+;
+
+lowArithmeticBinaryExpression returns [Type type] :
+    highArithmeticBinaryExpression {
+        $type = $highArithmeticBinaryExpression.type;
+    }
+    (
+        (PLUS | MINUS) highArithmeticBinaryExpression {
+            ensureEquals($type, $highArithmeticBinaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.NUMBER, $highArithmeticBinaryExpression.type, _localctx, _ctx);
         }
     )*
 ;
 
-expression_binary_z returns [Type type] :
-    expression_unary {
-        $type = $expression_unary.type;
+highArithmeticBinaryExpression returns [Type type] :
+    unaryExpression {
+        $type = $unaryExpression.type;
     }
     (
-        ASTERISK expression_unary {
-            ensureEquals($type, $expression_unary.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $expression_unary.type, _localctx, _ctx);
-        }
-        |
-        SLASH expression_unary {
-            ensureEquals($type, $expression_unary.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $expression_unary.type, _localctx, _ctx);
-        }
-        |
-        PERCENT expression_unary {
-            ensureEquals($type, $expression_unary.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $expression_unary.type, _localctx, _ctx);
+        (ASTERISK | SLASH | PERCENT) unaryExpression {
+            ensureEquals($type, $unaryExpression.type, _localctx, _ctx);
+            ensureSubtype(Type.NUMBER, $unaryExpression.type, _localctx, _ctx);
         }
     )*
 ;
 
-expression_unary returns [Type type] :
-    PLUS expression_term {
-        ensureSubtype(Type.NUMBER, $expression_term.type, _localctx, _ctx);
-        $type = $expression_term.type;
+unaryExpression returns [Type type] :
+    callExpression {
+        $type = $callExpression.type;
     }
     |
-    MINUS expression_term {
-        ensureSubtype(Type.NUMBER, $expression_term.type, _localctx, _ctx);
-        $type = $expression_term.type;
+    unaryExpression AS typeName {
+        $type = $typeName.type;
     }
     |
-    INVERSE expression_term {
-        ensureSubtype(Type.NUMBER, $expression_term.type, _localctx, _ctx);
-        $type = $expression_term.type;
+    OPENING_BRACKET expression CLOSING_BRACKET {
+        $type = $expression.type;
     }
     |
-    NOT expression_term {
-        ensureSubtype(Type.BOOL, $expression_term.type, _localctx, _ctx);
-        $type = $expression_term.type;
+    (PLUS | MINUS | TILDA) unaryExpression {
+        ensureSubtype(Type.NUMBER, $unaryExpression.type, _localctx, _ctx);
+        $type = $unaryExpression.type;
     }
     |
-    expression_term {
-        $type = $expression_term.type;
+    (NOT | EXCLAMATION_MARK) unaryExpression {
+        ensureSubtype(Type.BOOL, $unaryExpression.type, _localctx, _ctx);
+        $type = $unaryExpression.type;
     }
 ;
 
-expression_term returns [Type type] :
-    TRUE {
-        $type = Type.BOOL;
+callExpression returns [Type type] :
+    terminalExpression {
+        $type = $terminalExpression.type;
     }
     |
-    FALSE {
+    variableName {
+        checkVariable($variableName.name, _localctx, _ctx);
+        $type = variables.get($variableName.name);
+    }
+    |
+    functionName OPENING_BRACKET (expression (COMMA expression)*)? CLOSING_BRACKET {
+        $type = Type.INT;
+    }
+;
+
+terminalExpression returns [Type type] :
+    (TRUE | FALSE) {
         $type = Type.BOOL;
     }
     |
@@ -341,11 +319,43 @@ expression_term returns [Type type] :
     STRINGVALUE {
         $type = Type.STRING;
     }
-    |
-    OPENING_BRACKET expression CLOSING_BRACKET {
-        $type = $expression.type;
-    }
 ;
+
+PLUS : '+';
+MINUS : '-';
+TILDA : '~';
+EXCLAMATION_MARK : '!';
+NOT : 'not';
+ASTERISK : '*';
+SLASH : '/';
+PERCENT : '%';
+GREATER : '>';
+GREATER_OR_EQUALS : '>=';
+EQUALS_OR_GREATER : '=>';
+LESS : '<';
+LESS_OR_EQUALS : '<=';
+EQUALS_OR_LESS : '=<';
+EQUALS : '==';
+NOT_EQUALS : '!=';
+AMPERSAND : '&';
+AND : 'and';
+CARET : '^';
+XOR : 'xor';
+PIPE : '|';
+OR : 'or';
+AMPERSAND_AMPERSAND : '&&';
+PIPE_PIPE : '||';
+ASSIGN : '=';
+ASTERISK_ASSIGN : '*=';
+SLASH_ASSIGN : '/=';
+PERCENT_ASSIGN : '%=';
+PLUS_ASSIGN : '+=';
+MINUS_ASSIGN : '-=';
+AND_ASSIGN : '&=';
+XOR_ASSIGN : '^=';
+OR_ASSIGN : '|=';
+PLUS_PLUS : '++';
+MINUS_MINUS : '--';
 
 OPENING_BRACKET : '(';
 CLOSING_BRACKET : ')';
@@ -353,50 +363,16 @@ OPENING_BRACE : '{';
 CLOSING_BRACE : '}';
 OPENING_SQUARE_BRACKET : '[';
 CLOSING_SQUARE_BRACKET : ']';
-
 DOT : '.';
 COMMA : ',';
-COLON : ':';
 SEMICOLON : ';';
+QUESTION_MARK : '?';
+COLON : ':';
 QUOTE : '\'';
 DOUBLE_QUOTE : '"';
-QUESTION : '?';
-PLUS : '+';
-MINUS : '-';
-ASTERISK : '*';
-SLASH : '/';
-PERCENT : '%';
 
-ASIGN : '=';
-PLUS_ASIGN : '+=';
-MINUS_ASIGN : '-=';
-ASTERISK_ASIGN : '*=';
-SLASH_ASIGN : '/=';
-PERCENT_ASIGN : '%=';
-AND_ASIGN : '&=';
-OR_ASIGN : '|=';
-XOR_ASIGN : '^=';
-
-EQUALS : '==';
-NOT_EQUALS : '!=';
-LESS : '<';
-GREATER : '>';
-LESS_OR_EQUALS : '<=' | '=<';
-GREATER_OR_EQUALS : '>=' | '=>';
 SUPER_EQUALS : '===';
 SUPER_NOT_EQUALS : '!==';
-
-INVERSE : '~';
-NOT : 'not' | '!';
-AND : 'and' | '&';
-OR : 'or' | '|';
-XOR : 'xor' | '^';
-SMART_AND : '&&';
-SMART_OR : '||';
-
-FALSE : 'false';
-TRUE : 'true';
-NULL : 'null';
 
 BOOL : 'bool';
 BYTE : 'byte';
@@ -407,7 +383,15 @@ FLOAT : 'float';
 DOUBLE : 'double';
 CHAR : 'char';
 STRING : 'string';
+VOID : 'void';
 
+FALSE : 'false';
+TRUE : 'true';
+NULL : 'null';
+
+VAR : 'var';
+CONST : 'const';
+FUN : 'fun';
 IF : 'if';
 ELSE : 'else';
 FOR : 'for';
@@ -417,11 +401,7 @@ AS : 'as';
 WHEN : 'when';
 CONTINUE : 'continue';
 BREAK : 'break';
-RETURN : 'retur';
-
-VAR : 'var';
-CONST : 'const';
-FUN : 'fun';
+RETURN : 'return';
 
 SLASHN : '\\n';
 SLASHSLASH : '\\\\';
@@ -432,6 +412,6 @@ DOUBLE_NUMBER_VALUE : NUMBER_VALUE DOT NUMBER_VALUE ;
 CHARACTER_VALUE : QUOTE . QUOTE;
 STRINGVALUE : '"' (~('\\' | '$' |'"') | SLASHN | SLASHSLASH | SLASHDOLLAR)* '"';
 
-IDENTIFIER : '_'*[A-Za-z][_A-Za-z0-9]*;
+IDENTIFIER : [A-Za-z][A-Za-z0-9]*;
 
 WHITESPACE: [ \n\t\r]+ -> skip;

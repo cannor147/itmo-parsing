@@ -1,0 +1,20 @@
+var x = 17;
+var y = 6;
+
+fun main() : int {
+    var z = x + y * 2;
+    var t = false;
+    t &= true;
+    if (t) {
+        z += 5;
+    } else {
+        z += 6;
+    }
+    run(z, t);
+}
+
+fun run(x: int, y: bool) {
+    if (y) {
+        y--;
+    }
+}

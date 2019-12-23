@@ -3,15 +3,14 @@ import grammar.NevelLexer;
 import grammar.NevelParser;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.antlr.v4.runtime.tree.ParseTreeWalker;
+import translation.CTranslator;
+import translation.Translator;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
 public class Compiler {
-
     public static void main(String[] args) {
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
@@ -38,49 +37,22 @@ public class Compiler {
             NevelLexer lexer = new NevelLexer(CharStreams.fromString(code));
             CommonTokenStream tokens = new CommonTokenStream(lexer);
             NevelParser parser = new NevelParser(tokens);
-            ParseTree tree = parser.program();
-            System.out.println(tree.toStringTree(parser));
+            NevelParser.ProgramContext program = parser.program();
+            System.out.println(program.toStringTree(parser));
+            System.out.println();
+            Translator translator = new CTranslator();
+            System.out.println(translator.translate(program));
         } catch (Exception e) {
             System.err.println(e.getMessage());
         }
     }
 
-    static void ensureSubtype(Type expected, Type actual) {
-        if ((expected.getCode() & actual.getCode()) != actual.getCode()) {
-            throw new RuntimeException("Lol kek");
-        }
-    }
-
-    static void ensureEquals(Type expected, Type actual) {
-        if (expected.getCode() != actual.getCode()) {
-            throw new RuntimeException("Lol kek");
-        }
-    }
-
-    enum Type {
-        BOOL(1),
-        BYTE(2),
-        SHORT(4),
-        INT(8),
-        LONG(16),
-        FLOAT(32),
-        DOUBLE(64),
-        CHAR(128),
-        STRING(256),
-
-        INTEGER(30),
-        NUMBER(126),
-        PRIMITIVE(254),
-        ANY(Integer.MAX_VALUE);
-
-        private final int code;
-
-        Type(int code) {
-            this.code = code;
-        }
-
-        public int getCode() {
-            return code;
-        }
-    }
+    /*
+        todo: function calls
+        todo: custom operators
+        todo: arrays
+        todo: continue/break/return checking
+        todo: for
+        todo: super equality
+     */
 }
