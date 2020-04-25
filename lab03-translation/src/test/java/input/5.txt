@@ -1,0 +1,11 @@
+var azaza: int;
+
+fun lol(meow: int) {
+    meow = 5;
+    meow = kek(meow);
+    var f = kek(meow);
+}
+
+fun kek(gav: int): int {
+    azaza = 5;
+}

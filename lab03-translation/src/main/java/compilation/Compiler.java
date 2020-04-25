@@ -1,8 +1,5 @@
-import exception.ParseException;
-import grammar.NevelLexer;
-import grammar.NevelParser;
-import org.antlr.v4.runtime.CharStreams;
-import org.antlr.v4.runtime.CommonTokenStream;
+package compilation;
+
 import translation.CTranslator;
 import translation.Translator;
 
@@ -30,28 +27,22 @@ public class Compiler {
             }
             codeBuilder.append(line);
         }
+        String code = codeBuilder.toString();
 
         try {
-            String code = codeBuilder.toString();
-            ParseException.externalSource = code;
-            NevelLexer lexer = new NevelLexer(CharStreams.fromString(code));
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
-            NevelParser parser = new NevelParser(tokens);
-            NevelParser.ProgramContext program = parser.program();
-            System.out.println(program.toStringTree(parser));
+            NevelProgram nevelProgram = new NevelProgram(code);
+            System.out.println(nevelProgram);
             System.out.println();
             Translator translator = new CTranslator();
-            System.out.println(translator.translate(program));
+            System.out.println(nevelProgram.translate(translator));
         } catch (Exception e) {
             System.err.println(e.getMessage());
         }
     }
 
     /*
-        todo: function calls
         todo: custom operators
         todo: arrays
-        todo: continue/break/return checking
         todo: for
         todo: super equality
      */

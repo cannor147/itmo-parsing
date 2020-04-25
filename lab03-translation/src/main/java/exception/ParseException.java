@@ -1,20 +1,28 @@
 package exception;
 
+import context.ParseContext;
+import org.jetbrains.annotations.NotNull;
+
 public class ParseException extends RuntimeException {
-    public static String externalSource;
+    @NotNull
+    public static String source;
 
-    public ParseException(String message, int line, int position, String source) {
-        super(generateMessage(message, line, position, source));
+    public ParseException(@NotNull String message, @NotNull ParseContext parseContext) {
+        super(generateMessage(message, parseContext));
     }
 
-    public ParseException(String message, int line, int position, String source, Exception cause) {
-        super(generateMessage(message, line, position, source), cause);
+    public ParseException(@NotNull String message, @NotNull ParseContext parseContext, @NotNull Exception cause) {
+        super(generateMessage(message, parseContext), cause);
     }
 
-    private static String generateMessage(String message, int line, int position, String source) {
+    public static void setSource(@NotNull String source) {
+        ParseException.source = source;
+    }
+
+    private static String generateMessage(@NotNull String message, @NotNull ParseContext parseContext) {
         return message + System.lineSeparator()
-                + "in the line: " + line + ", position: " + position + System.lineSeparator()
-                + externalSource.split(System.lineSeparator())[line - 1] + System.lineSeparator()
-                + " ".repeat(position) + "^";
+                + "in the line: " + parseContext.getLine() + ", position: " + parseContext.getPosition() + System.lineSeparator()
+                + source.split(System.lineSeparator())[parseContext.getLine() - 1] + System.lineSeparator()
+                + " ".repeat(parseContext.getPosition()) + "^";
     }
 }

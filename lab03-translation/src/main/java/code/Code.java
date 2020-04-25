@@ -1,4 +1,6 @@
-package translation;
+package code;
+
+import java.util.HashMap;
 
 public class Code {
     private static final Code TAB = new Code("\t");
@@ -30,6 +32,11 @@ public class Code {
         for (int i = 0; i < count; i++) {
             add(TAB);
         }
+    }
+
+    @Override
+    public int hashCode() {
+        return toString().hashCode();
     }
 
     @Override

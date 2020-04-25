@@ -1,68 +1,51 @@
 package translation;
 
+import code.Code;
 import grammar.NevelBaseVisitor;
 import grammar.NevelParser;
+import lang.mutability.Mutability;
+import lang.type.PrimitiveType;
+import lang.type.Type;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
+import types.Indexer;
 
 import java.util.HashMap;
 import java.util.Map;
 
+import static code.Codes.*;
+
 public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
-    private static final Code PLUS = new Code("+");
-    private static final Code MINUS = new Code("-");
-    private static final Code TILDA = new Code("~");
-    private static final Code EXCLAMATION_MARK = new Code("!");
-    private static final Code ASTERISK = new Code("*");
-    private static final Code SLASH = new Code("/");
-    private static final Code PERCENT = new Code("%");
-    private static final Code GREATER = new Code(">");
-    private static final Code GREATER_OR_EQUALS = new Code(">=");
-    private static final Code LESS = new Code("<");
-    private static final Code LESS_OR_EQUALS = new Code("<=");
-    private static final Code EQUALS = new Code("==");
-    private static final Code NOT_EQUALS = new Code("!=");
-    private static final Code AMPERSAND = new Code("&");
-    private static final Code CARET = new Code("^");
-    private static final Code PIPE = new Code("|");
-    private static final Code AMPERSAND_AMPERSAND = new Code("&&");
-    private static final Code PIPE_PIPE = new Code("||");
-    private static final Code ASSIGN = new Code("=");
-    private static final Code PLUS_ASSIGN = new Code("+=");
-    private static final Code MINUS_ASSIGN = new Code("-=");
-    private static final Code ASTERISK_ASSIGN = new Code("*=");
-    private static final Code SLASH_ASSIGN = new Code("/=");
-    private static final Code PERCENT_ASSIGN = new Code("%=");
-    private static final Code AND_ASSIGN = new Code("&=");
-    private static final Code OR_ASSIGN = new Code("|=");
-    private static final Code XOR_ASSIGN = new Code("^=");
-    private static final Code PLUS_PLUS = new Code("++");
-    private static final Code MINUS_MINUS = new Code("--");
+    private static final Map<Code, Code> TYPE_TRANSLATION_MAP = new HashMap<>();
+    private static final Map<Code, Code> TYPE_FORMAT_MAP = new HashMap<>();
 
-    private static final Code EMPTY = new Code("");
-    private static final Code SPACE = new Code(" ");
+    static {
+        TYPE_TRANSLATION_MAP.put(VOID, VOID);
+        TYPE_TRANSLATION_MAP.put(BOOL, BOOL);
+        TYPE_TRANSLATION_MAP.put(BYTE, new Code(SIGNED, SPACE, CHAR));
+        TYPE_TRANSLATION_MAP.put(SHORT, new Code(SIGNED, SPACE, SHORT, SPACE, INT));
+        TYPE_TRANSLATION_MAP.put(INT, new Code(SIGNED, SPACE, INT));
+        TYPE_TRANSLATION_MAP.put(LONG, new Code(SIGNED, SPACE, LONG, SPACE, LONG, SPACE, INT));
+        TYPE_TRANSLATION_MAP.put(FLOAT, FLOAT);
+        TYPE_TRANSLATION_MAP.put(DOUBLE, DOUBLE);
+        TYPE_TRANSLATION_MAP.put(CHAR, new Code(UNSIGNED, SPACE, CHAR));
+        TYPE_TRANSLATION_MAP.put(STRING, new Code(UNSIGNED, SPACE, CHAR, ASTERISK));
 
-    private static final Code OPEN = new Code("(");
-    private static final Code CLOSE = new Code(")");
-    private static final Code BLOCK = new Code("{");
-    private static final Code UNBLOCK = new Code("}");
-    private static final Code SEMICOLON = new Code(";");
-    private static final Code COMMA = new Code(",");
-    private static final Code QUESTION = new Code("?");
-    private static final Code COLON = new Code(":");
+        TYPE_FORMAT_MAP.put(BOOL, new Code("%s"));
+        TYPE_FORMAT_MAP.put(BYTE, new Code("%hhi"));
+        TYPE_FORMAT_MAP.put(SHORT, new Code("%hi"));
+        TYPE_FORMAT_MAP.put(INT, new Code("%i"));
+        TYPE_FORMAT_MAP.put(LONG, new Code("%lli"));
+        TYPE_FORMAT_MAP.put(FLOAT, new Code("%f"));
+        TYPE_FORMAT_MAP.put(DOUBLE, new Code("%lf"));
+        TYPE_FORMAT_MAP.put(CHAR, new Code("%c"));
+        TYPE_FORMAT_MAP.put(STRING, new Code("%s"));
+    }
 
-    private static final Code IF = new Code("if");
-    private static final Code ELSE = new Code("else");
-    private static final Code WHILE = new Code("while");
-    private static final Code CONTINUE = new Code("continue");
-    private static final Code BREAK = new Code("break");
-    private static final Code RETURN = new Code("return");
-    private static final Code CONST = new Code("const");
-    private static final Code INCLUDE = new Code("#include");
-
-    private static final Code[] includes = {
+    private static final Code[] INCLUDES = {
             new Code("<stdbool.h>"),
+            new Code("<stdio.h>"),
     };
 
     private static final Code[] commonSymbols = {
@@ -95,8 +78,30 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
     @Override
     public Code translate(NevelParser.ProgramContext ctx) {
         Code code = new Code();
-        for (Code include : includes) {
-            code.addln(INCLUDE, SPACE, include);
+        for (Code include : INCLUDES) {
+            code.addln(C_INCLUDE, SPACE, include);
+        }
+        code.addln();
+
+        Code slashN = new Code("\\n");
+        for (Type generalType : Indexer.GENERAL_TYPES) {
+            Code v = new Code("v");
+            Code vv = new Code("v");
+            if (generalType.equals(PrimitiveType.BOOL)) {
+                vv.add(SPACE, QUESTION, SPACE, new Code("\"true\""), SPACE, COLON, SPACE, new Code("\"false\""));
+            }
+            Code typeCode = new Code(TYPE_TRANSLATION_MAP.get(generalType.getCode()));
+            Code formatCode = new Code(TYPE_FORMAT_MAP.get(generalType.getCode()));
+
+            Code niceTypeCode = new Code('_' + generalType.getCode().toString());
+
+            code.add(VOID, SPACE, PRINT, niceTypeCode, OPEN, typeCode, SPACE, v, CLOSE, SPACE, OPENING_BRACE, SPACE);
+            code.add(PRINTF, OPEN, DOUBLE_QUOTE, formatCode, DOUBLE_QUOTE, COMMA, SPACE, vv, CLOSE, SEMICOLON);
+            code.addln(SPACE, CLOSING_BRACE);
+
+            code.add(VOID, SPACE, PRINTLN, niceTypeCode, OPEN, typeCode, SPACE, v, CLOSE, SPACE, OPENING_BRACE, SPACE);
+            code.add(PRINTF, OPEN, DOUBLE_QUOTE, formatCode, slashN, DOUBLE_QUOTE, COMMA, SPACE, vv, CLOSE, SEMICOLON);
+            code.addln(SPACE, CLOSING_BRACE);
         }
         code.addln();
 
@@ -104,6 +109,8 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
             code.addln(visitFunction(functionCtx, false), SEMICOLON);
         }
         code.addln();
+
+        code.add(TYPE_TRANSLATION_MAP.get(BOOL), SPACE, new Code("_tmp"), SPACE, ASSIGN, new Code("0"), SEMICOLON);
 
         code.add(visitProgram(ctx));
         return code;
@@ -120,7 +127,7 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
 
     @Override
     public Code visitTypeName(NevelParser.TypeNameContext ctx) {
-        return ctx.type.getCCode();
+        return new Code(TYPE_TRANSLATION_MAP.get(ctx.type.getCode()));
     }
 
     @Override
@@ -140,7 +147,7 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
 
     @Override
     public Code visitBlock(NevelParser.BlockContext ctx) {
-        Code code = new Code(BLOCK);
+        Code code = new Code(OPENING_BRACE);
         code.addln();
         blockCount++;
         for (NevelParser.StatementContext statementCtx : ctx.statement()) {
@@ -149,7 +156,7 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
         }
         blockCount--;
         code.tabulate(blockCount);
-        code.add(UNBLOCK);
+        code.add(CLOSING_BRACE);
         return code;
 
     }
@@ -181,12 +188,12 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
 
     @Override
     public Code visitIncrementOperator(NevelParser.IncrementOperatorContext ctx) {
-        return new Code(visitVariableName(ctx.variableName()), PLUS_PLUS, SEMICOLON);
+        return new Code(visitVariableName(ctx.availableVariable().variableName()), PLUS_PLUS, SEMICOLON);
     }
 
     @Override
     public Code visitDecrementOperator(NevelParser.DecrementOperatorContext ctx) {
-        return new Code(visitVariableName(ctx.variableName()), MINUS_MINUS, SEMICOLON);
+        return new Code(visitVariableName(ctx.availableVariable().variableName()), MINUS_MINUS, SEMICOLON);
     }
 
     @Override
@@ -244,9 +251,34 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
         return code;
     }
 
+    /*
+    t = a
+    a = b
+    b = t
+
+    t = 4
+    1 = 3
+    2 = t
+     */
+
     @Override
     public Code visitAssignOperator(NevelParser.AssignOperatorContext ctx) {
         return new Code(visitAssignation(ctx.assignation()), SEMICOLON);
+    }
+
+    @Override
+    public Code visitSwapOperator(NevelParser.SwapOperatorContext ctx) {
+        Code first = visitChildren(ctx.availableVariable(0));
+        Code second = visitChildren(ctx.availableVariable(1));
+        Code third = visitChildren(ctx.availableVariable(2));
+        Code fourth = visitChildren(ctx.availableVariable(3));
+        Code tmp = new Code("_tmp");
+
+        Code code = new Code(tmp, SPACE, ASSIGN, SPACE, fourth, SEMICOLON);
+        code.add(first, SPACE, ASSIGN, SPACE, third, SEMICOLON);
+        code.add(second, SPACE, ASSIGN, SPACE, tmp, SEMICOLON);
+
+        return code;
     }
 
     @Override
@@ -256,22 +288,22 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
 
     @Override
     public Code visitDeclaration(NevelParser.DeclarationContext ctx) {
-        Code code = ctx.constant ? new Code(CONST, SPACE) : new Code();
+        Code code = ctx.mutability == Mutability.IMMUTABLE ? new Code(CONST, SPACE) : new Code();
         code.add(visitTypeName(ctx.typeName()), SPACE, visitVariableName(ctx.variableName()));
         return code;
     }
 
     @Override
     public Code visitInitialization(NevelParser.InitializationContext ctx) {
-        Code code = ctx.constant ? new Code(CONST, SPACE) : new Code();
-        code.add(ctx.type.getCCode(), SPACE, visitVariableName(ctx.variableName()));
+        Code code = ctx.mutability == Mutability.IMMUTABLE ? new Code(CONST, SPACE) : new Code();
+        code.add(TYPE_TRANSLATION_MAP.get(ctx.type.getCode()), SPACE, visitVariableName(ctx.variableName()));
         code.add(SPACE, ASSIGN, SPACE, visitExpression(ctx.expression()));
         return code;
     }
 
     @Override
     public Code visitAssignation(NevelParser.AssignationContext ctx) {
-        Code code = new Code(visitVariableName(ctx.variableName()));
+        Code code = new Code(visitVariableName(ctx.availableVariable.variableName()));
         TerminalNode sign = (TerminalNode) ctx.getChild(1);
         code.add(SPACE, arithmeticTranslations.get(sign.getSymbol().getType()), SPACE, visitExpression(ctx.expression()));
         return code;
@@ -344,7 +376,7 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
         if (ctx.callExpression() != null) {
             return visitCallExpression(ctx.callExpression());
         } else if (ctx.AS() != null) {
-            return new Code(OPEN, OPEN, visitTypeName(ctx.typeName()), OPEN, SPACE, CLOSE, visitUnaryExpression(ctx.unaryExpression()), CLOSE, CLOSE);
+            return new Code(OPEN, OPEN, visitTypeName(ctx.typeName()), CLOSE, SPACE, OPEN, visitUnaryExpression(ctx.unaryExpression()), CLOSE, CLOSE);
         } else if (ctx.OPENING_BRACKET() != null) {
             return new Code(OPEN, visitExpression(ctx.expression()), CLOSE);
         } else {
@@ -359,7 +391,8 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
             return visit(ctx.getChild(0));
         }
 
-        Code code = new Code(visitFunctionName(ctx.functionName()), OPEN);
+        Code functionName = visitFunctionName(ctx.functionName());
+        Code code = new Code(OPEN);
         boolean first = true;
         for (NevelParser.ExpressionContext expressionCtx : ctx.expression()) {
             if (first) {
@@ -370,7 +403,13 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
             code.add(visitExpression(expressionCtx));
         }
         code.add(CLOSE);
-        return code;
+
+        if (ctx.expression().size() == 1 && ("print".equals(functionName.toString()) || "println".equals(functionName.toString()))) {
+            String typeName = ctx.expression(0).type.getCode().toString();
+            functionName.add(new Code('_' + ctx.expression(0).type.getCode().toString()));
+        }
+
+        return new Code(functionName, code);
     }
 
     @Override
@@ -379,8 +418,9 @@ public class CTranslator extends NevelBaseVisitor<Code> implements Translator {
     }
 
     private Code visitFunction(NevelParser.FunctionContext ctx, boolean printBody) {
-        Code code = new Code(ctx.types.get(0).getCCode());
-        code.add(SPACE, visitFunctionName(ctx.functionName()), SPACE, OPEN);
+        Code typeCode = TYPE_TRANSLATION_MAP.get(ctx.resultType.getCode());
+        Code code = new Code(typeCode);
+        code.add(SPACE, visitFunctionName(ctx.functionName()), OPEN);
         boolean first = true;
         for (NevelParser.DeclarationContext declarationCtx : ctx.declaration()) {
             if (first) {

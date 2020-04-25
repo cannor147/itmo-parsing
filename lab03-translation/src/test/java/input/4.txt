@@ -1,0 +1,11 @@
+var azaza: int;
+
+fun lol(meow: bool) {
+    const a = 5, b = 7;
+    meow = true;
+}
+
+fun main(): int {
+    var a = true, b = false;
+    (a, b) = (b, a);
+}

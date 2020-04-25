@@ -2,7 +2,12 @@ grammar Nevel;
 
 @header {
     import exception.*;
-    import type.*;
+    import types.*;
+    import context.*;
+    import scope.*;
+    import lang.mutability.*;
+    import lang.type.*;
+    import lang.object.*;
     import java.util.HashMap;
     import java.util.HashSet;
     import java.util.ArrayList;
@@ -12,116 +17,185 @@ grammar Nevel;
 }
 
 @members {
-    private void error(String message, ParserRuleContext _localctx, ParserRuleContext _ctx) throws ParseException {
-        throw new ParseException(
-            message,
-            _localctx.start.getLine(),
-            _localctx.start.getCharPositionInLine(),
-            _ctx.start.getText()
-        );
-    }
+    private Typer typer;
+    private Indexer indexer;
+    private Scope scope;
+    private Stage stage;
 
-    private final Map<String, Type> variables = new HashMap<>();
-    private final Map<String, List<Type>> functions = new HashMap<>();
-    private final Set<String> constantVariables = new HashSet<>();
-
-    private void ensureSubtype(Type expected, Type actual, ParserRuleContext _localctx, ParserRuleContext _ctx) throws ParseException {
-        if ((expected.getCode() & actual.getCode()) != actual.getCode()) {
-            error("Expected subtype of " + expected + ", but found " + actual + ".", _localctx, _ctx);
-        }
-    }
-
-    private void ensureEquals(Type expected, Type actual, ParserRuleContext _localctx, ParserRuleContext _ctx) throws ParseException {
-        if (expected.getCode() != actual.getCode()) {
-            error("Expected " + expected + ", but found " + actual + ".", _localctx, _ctx);
-        }
-    }
-
-    private void checkVariable(String name, ParserRuleContext _localctx, ParserRuleContext _ctx) throws ParseException {
-        if (!variables.containsKey(name)) {
-            error("Cannot resolve symbol " + name + ".", _localctx, _ctx);
-        }
-        if (constantVariables.contains(name)) {
-            error("Cannot assign a value to const variable " + name + ".", _localctx, _ctx);
-        }
-    }
-
-    private void defineVariable(String name, Type type) {
-        variables.put(name, type);
-    }
-
-    private void defineFunction(String name, List<Type> types) {
-        functions.put(name, types);
+    private ParseContext getContext(ParserRuleContext _localctx) {
+        return new ParseContext(_localctx, scope, stage);
     }
 }
 
-program : (defineOperator | emptyOperator | function)+;
+program[Typer myTyper, Indexer myIndexer, Scope myScope, Stage myStage] :
+    {
+        typer = myTyper;
+        indexer = myIndexer;
+        scope = myScope;
+        stage = myStage;
+    }
+    (defineOperator | emptyOperator | function | LINE_COMMENT | BLOCK_COMMENT)+
+;
 
 typeName returns [Type type] :
-    ( BOOL | BYTE | SHORT | INT | LONG | FLOAT | DOUBLE | CHAR | STRING | VOID )
-    { $type = Type.valueOf(_localctx.getChild(0).getText().toUpperCase()); }
+    (
+        ( BOOL | BYTE | SHORT | INT | LONG | FLOAT | DOUBLE | CHAR | VOID ) {
+            $type = PrimitiveType.valueOf(_localctx.getChild(0).getText().toUpperCase());
+        }
+        |
+        STRING {
+            $type = StringType.getInstance();
+        }
+    )
+    (
+        OPENING_SQUARE_BRACKET CLOSING_SQUARE_BRACKET {
+            $type = new ArrayType($type);
+        }
+    )*
 ;
 variableName returns [String name] : IDENTIFIER { $name = _localctx.getChild(0).getText(); };
 functionName returns [String name] : IDENTIFIER { $name = _localctx.getChild(0).getText(); };
 
-function returns [List<Type> types, String name] :
-    FUN functionName { $name = $functionName.name; $types = new ArrayList(); $types.add(Type.VOID); }
+function returns [List<Type> argumentTypes, Type resultType, String name] :
+    FUN functionName {
+        $name = $functionName.name;
+        $argumentTypes = new ArrayList();
+        $resultType = PrimitiveType.VOID;
+        scope.in("@FUNCTION_" + $functionName.name);
+    }
     OPENING_BRACKET
-    (declaration[false] { $types.add($declaration.type); } (COMMA declaration[false] { $types.add($declaration.type); })*)?
+    (
+        declaration[Mutability.MUTABLE] {
+            $argumentTypes.add($declaration.type);
+        }
+        (
+            COMMA declaration[Mutability.MUTABLE] {
+                $argumentTypes.add($declaration.type);
+            }
+        )*
+    )?
     CLOSING_BRACKET
-    (COLON typeName { $types.set(0, $typeName.type); })?
-    block
-    { defineFunction($name, $types); }
+    (
+        COLON typeName {
+            $resultType = $typeName.type;
+        }
+    )?
+    block[null] {
+        scope.out();
+        indexer.indexFunction($name, $argumentTypes, $resultType, getContext(_localctx));
+    }
 ;
 
-block : OPENING_BRACE (statement)* CLOSING_BRACE;
+block[String scopeName] :
+    OPENING_BRACE {
+        if ($scopeName != null) {
+            scope.in($scopeName);
+        }
+    }
+    (statement)*
+    CLOSING_BRACE {
+        if ($scopeName != null) {
+            scope.out();
+        }
+    }
+;
 statement : ifStatement | whileStatement | operatorStatement;
 
-ifStatement : IF OPENING_BRACKET expression CLOSING_BRACKET (statement | block) (ELSE (statement | block))?;
-whileStatement : WHILE OPENING_BRACKET expression CLOSING_BRACKET (statement | block);
+ifStatement : IF OPENING_BRACKET expression CLOSING_BRACKET (statement | block["$@IF"]) (ELSE (statement | block["@ELSE"]))?;
+whileStatement : WHILE OPENING_BRACKET expression CLOSING_BRACKET (statement | block["@WHILE"]);
 operatorStatement :
     incrementOperator | decrementOperator | assignOperator | callOperator | defineOperator |
-    continueOperator | breakOperator | returnOperator | emptyOperator
+    continueOperator | breakOperator | returnOperator | emptyOperator | swapOperator
 ;
 
-incrementOperator : variableName { checkVariable($variableName.name, _localctx, _ctx); } PLUS_PLUS SEMICOLON;
-decrementOperator : variableName { checkVariable($variableName.name, _localctx, _ctx); } MINUS_MINUS SEMICOLON;
+incrementOperator : availableVariable[PrimitiveType.NUMBER] PLUS_PLUS SEMICOLON;
+decrementOperator : availableVariable[PrimitiveType.NUMBER] MINUS_MINUS SEMICOLON;
 callOperator : callExpression SEMICOLON;
 emptyOperator : SEMICOLON;
-continueOperator : CONTINUE SEMICOLON;
-breakOperator : BREAK SEMICOLON;
-returnOperator : RETURN (expression)? SEMICOLON;
-defineOperator : (CONST initialization[true] (COMMA initialization[true])* | VAR definition[false] (COMMA definition[false])*) SEMICOLON;
+continueOperator : CONTINUE { typer.ensureInsideCycle("continue", getContext(_localctx)); } SEMICOLON;
+breakOperator : BREAK { typer.ensureInsideCycle("break", getContext(_localctx)); } SEMICOLON;
+returnOperator : RETURN { typer.ensureInsideFunction("return", getContext(_localctx)); } (expression)? SEMICOLON;
 assignOperator : assignation SEMICOLON;
-
-definition[boolean constant] : declaration[$constant] | initialization[$constant];
-declaration[boolean constant] returns [Type type, String name] :
-    variableName { $name = $variableName.name; }
-    COLON typeName { $type = $typeName.type; defineVariable($name, $type); }
+defineOperator :
+    (
+        CONST initialization[Mutability.IMMUTABLE] (COMMA initialization[Mutability.IMMUTABLE])*
+        |
+        VAR definition[Mutability.MUTABLE] (COMMA definition[Mutability.MUTABLE])*
+    )
+    SEMICOLON
 ;
-initialization[boolean constant] returns [Type type, String name] :
-    variableName { $name = $variableName.name; }
-    (COLON typeName { $type = $typeName.type; })?
+swapOperator locals [Type type1, Type type2]:
+    OPENING_BRACKET
+    availableVariable[PrimitiveType.BOOL] { $type1 = $availableVariable.type; }
+    COMMA
+    availableVariable[PrimitiveType.BOOL] { $type2 = $availableVariable.type; }
+    CLOSING_BRACKET
+    ASSIGN
+    OPENING_BRACKET
+    availableVariable[PrimitiveType.BOOL] { typer.ensureEquals($type1, $availableVariable.type, getContext(_localctx)); }
+    COMMA
+    availableVariable[PrimitiveType.BOOL] { typer.ensureEquals($type2, $availableVariable.type, getContext(_localctx)); }
+    CLOSING_BRACKET
+    SEMICOLON
+;
+
+definition[Mutability mutability] : declaration[$mutability] | initialization[$mutability];
+declaration[Mutability mutability] returns [Type type, String name] :
+    variableName {
+        $name = $variableName.name;
+    }
+    COLON typeName {
+        $type = $typeName.type;
+        indexer.indexVariable($name, $type, $mutability, getContext(_localctx));
+    }
+;
+initialization[Mutability mutability] returns [Type type, String name] :
+    variableName {
+        $name = $variableName.name;
+    }
+    (
+        COLON typeName {
+            $type = $typeName.type;
+        }
+    )?
     ASSIGN expression {
         if ($type == null) {
             $type = $expression.type;
+        } else {
+            typer.ensureEquals($type, $expression.type, getContext(_localctx));
         }
-        ensureEquals($type, $expression.type, _localctx, _ctx);
-        defineVariable($name, $type);
+        indexer.indexVariable($name, $type, $mutability, getContext(_localctx));
     }
 ;
 assignation returns [Type type] :
-    variableName { checkVariable($variableName.name, _localctx, _ctx); $type = variables.get($variableName.name); }
+    availableVariable[AnyType.getInstance()] {
+        $type = $availableVariable.type;
+    }
     (
         ASSIGN
         |
-        (PLUS_ASSIGN | MINUS_ASSIGN | ASTERISK_ASSIGN | SLASH_ASSIGN | PERCENT_ASSIGN)
-        { ensureSubtype(Type.NUMBER, $type, _localctx, _ctx); }
+        (PLUS_ASSIGN | MINUS_ASSIGN | ASTERISK_ASSIGN | SLASH_ASSIGN | PERCENT_ASSIGN) {
+            typer.ensureSubtype(PrimitiveType.NUMBER, $type, getContext(_localctx));
+        }
         |
-        (AND_ASSIGN | OR_ASSIGN | XOR_ASSIGN)
-        { ensureSubtype(Type.ALGEBRAIC, $type, _localctx, _ctx); }
+        (AND_ASSIGN | OR_ASSIGN | XOR_ASSIGN) {
+            typer.ensureSubtype(PrimitiveType.ALGEBRAIC, $type, getContext(_localctx));
+        }
     )
-    expression { ensureEquals($type, $expression.type, _localctx, _ctx); }
+    expression {
+        typer.ensureEquals($type, $expression.type, getContext(_localctx));
+    }
+;
+
+availableVariable[Type superType] returns [Type type] :
+    variableName {
+        NevelVariable variable = indexer.findVariable($variableName.name, getContext(_localctx));
+        if (variable != null) {
+            $type = variable.getType();
+            typer.ensureMutable($variableName.name, variable.getMutability(), getContext(_localctx));
+            typer.ensureSubtype($superType, $type, getContext(_localctx));
+        }
+    }
 ;
 
 expression returns [Type type] :
@@ -136,11 +210,11 @@ ternaryExpression returns [Type type] :
     }
     (
         QUESTION_MARK smartOrBinaryExpression {
-            ensureSubtype(Type.BOOL, $type, _localctx, _ctx);
+            typer.ensureSubtype(PrimitiveType.BOOL, $type, getContext(_localctx));
             $type = $smartOrBinaryExpression.type;
         }
         COLON ternaryExpression {
-            ensureEquals($type, $ternaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $ternaryExpression.type, getContext(_localctx));
         }
     )?
 ;
@@ -151,8 +225,8 @@ smartOrBinaryExpression returns [Type type] :
     }
     (
         PIPE_PIPE smartAndBinaryExpression {
-            ensureEquals($type, $smartAndBinaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.BOOL, $smartAndBinaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $smartAndBinaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.BOOL, $smartAndBinaryExpression.type, getContext(_localctx));
         }
     )*
 ;
@@ -163,8 +237,8 @@ smartAndBinaryExpression returns [Type type] :
     }
     (
         AMPERSAND_AMPERSAND orBinaryExpression {
-            ensureEquals($type, $orBinaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.BOOL, $orBinaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $orBinaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.BOOL, $orBinaryExpression.type, getContext(_localctx));
         }
     )*
 ;
@@ -175,8 +249,8 @@ orBinaryExpression returns [Type type] :
     }
     (
         (OR | PIPE) xorBinaryExpression {
-            ensureEquals($type, $xorBinaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.ALGEBRAIC, $xorBinaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $xorBinaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.ALGEBRAIC, $xorBinaryExpression.type, getContext(_localctx));
         }
     )*
 ;
@@ -187,8 +261,8 @@ xorBinaryExpression returns [Type type] :
     }
     (
         (XOR | CARET) andBinaryExpression {
-            ensureEquals($type, $andBinaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.ALGEBRAIC, $andBinaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $andBinaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.ALGEBRAIC, $andBinaryExpression.type, getContext(_localctx));
         }
     )*
 ;
@@ -199,8 +273,8 @@ andBinaryExpression returns [Type type] :
     }
     (
         (AND | AMPERSAND) equalityBinaryExpression {
-            ensureEquals($type, $equalityBinaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.ALGEBRAIC, $equalityBinaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $equalityBinaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.ALGEBRAIC, $equalityBinaryExpression.type, getContext(_localctx));
         }
     )*
 ;
@@ -211,8 +285,8 @@ equalityBinaryExpression returns [Type type] :
     }
     (
         (EQUALS | NOT_EQUALS | SUPER_EQUALS | SUPER_NOT_EQUALS) relationalBinaryExpression {
-            ensureEquals($type, $relationalBinaryExpression.type, _localctx, _ctx);
-            $type = Type.BOOL;
+            typer.ensureEquals($type, $relationalBinaryExpression.type, getContext(_localctx));
+            $type = PrimitiveType.BOOL;
         }
     )*
 ;
@@ -223,9 +297,9 @@ relationalBinaryExpression returns [Type type] :
     }
     (
         (GREATER | GREATER_OR_EQUALS | EQUALS_OR_GREATER | LESS | LESS_OR_EQUALS | EQUALS_OR_LESS) lowArithmeticBinaryExpression {
-            ensureEquals($type, $lowArithmeticBinaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $lowArithmeticBinaryExpression.type, _localctx, _ctx);
-            $type = Type.BOOL;
+            typer.ensureEquals($type, $lowArithmeticBinaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.NUMBER, $lowArithmeticBinaryExpression.type, getContext(_localctx));
+            $type = PrimitiveType.BOOL;
         }
     )?
 ;
@@ -236,8 +310,8 @@ lowArithmeticBinaryExpression returns [Type type] :
     }
     (
         (PLUS | MINUS) highArithmeticBinaryExpression {
-            ensureEquals($type, $highArithmeticBinaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $highArithmeticBinaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $highArithmeticBinaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.NUMBER, $highArithmeticBinaryExpression.type, getContext(_localctx));
         }
     )*
 ;
@@ -248,8 +322,8 @@ highArithmeticBinaryExpression returns [Type type] :
     }
     (
         (ASTERISK | SLASH | PERCENT) unaryExpression {
-            ensureEquals($type, $unaryExpression.type, _localctx, _ctx);
-            ensureSubtype(Type.NUMBER, $unaryExpression.type, _localctx, _ctx);
+            typer.ensureEquals($type, $unaryExpression.type, getContext(_localctx));
+            typer.ensureSubtype(PrimitiveType.NUMBER, $unaryExpression.type, getContext(_localctx));
         }
     )*
 ;
@@ -268,57 +342,68 @@ unaryExpression returns [Type type] :
     }
     |
     (PLUS | MINUS | TILDA) unaryExpression {
-        ensureSubtype(Type.NUMBER, $unaryExpression.type, _localctx, _ctx);
+        typer.ensureSubtype(PrimitiveType.NUMBER, $unaryExpression.type, getContext(_localctx));
         $type = $unaryExpression.type;
     }
     |
     (NOT | EXCLAMATION_MARK) unaryExpression {
-        ensureSubtype(Type.BOOL, $unaryExpression.type, _localctx, _ctx);
+        typer.ensureSubtype(PrimitiveType.BOOL, $unaryExpression.type, getContext(_localctx));
         $type = $unaryExpression.type;
     }
 ;
 
-callExpression returns [Type type] :
+callExpression returns [Type type, List<Type> types, String name] :
     terminalExpression {
         $type = $terminalExpression.type;
     }
     |
     variableName {
-        checkVariable($variableName.name, _localctx, _ctx);
-        $type = variables.get($variableName.name);
-    }
-    |
-    functionName OPENING_BRACKET (expression (COMMA expression)*)? CLOSING_BRACKET {
-        $type = Type.INT;
-    }
-;
-
-terminalExpression returns [Type type] :
-    (TRUE | FALSE) {
-        $type = Type.BOOL;
-    }
-    |
-    NUMBER_VALUE {
-        long value = Long.parseLong($NUMBER_VALUE.getText());
-        if (Integer.MIN_VALUE <= value && value <= Integer.MAX_VALUE) {
-            $type = Type.INT;
-        } else {
-            $type = Type.LONG;
+        NevelVariable variable = indexer.findVariable($variableName.name, getContext(_localctx));
+        if (variable != null) {
+            $type = variable.getType();
         }
     }
     |
-    DOUBLE_NUMBER_VALUE {
-        double value = Double.parseDouble($DOUBLE_NUMBER_VALUE.getText());
-        $type = Type.DOUBLE;
-    }
+    (
+        functionName {
+            $name = $functionName.name;
+            $types = new ArrayList<>();
+        }
+        OPENING_BRACKET
+        (
+            expression {
+                $types.add($expression.type);
+            }
+            (
+                COMMA
+                expression {
+                    $types.add($expression.type);
+                }
+            )*
+        )?
+        CLOSING_BRACKET {
+            NevelFunction function = indexer.findFunction($name, $types, getContext(_localctx));
+            if (function != null) {
+                $type = function.getType();
+            }
+        }
+    )
+;
+
+terminalExpression returns [Type type] :
+    (FALSE | TRUE) { $type = PrimitiveType.BOOL; }
     |
-    CHARACTER_VALUE {
-        $type = Type.CHAR;
-    }
+    INT_VALUE { $type = PrimitiveType.INT; }
     |
-    STRINGVALUE {
-        $type = Type.STRING;
-    }
+    LONG_VALUE { $type = PrimitiveType.LONG; }
+    |
+    FLOAT_VALUE { $type = PrimitiveType.FLOAT; }
+    |
+    DOUBLE_VALUE { $type = PrimitiveType.DOUBLE; }
+    |
+    CHAR_VALUE { $type = PrimitiveType.CHAR; }
+    |
+    STRING_VALUE { $type = StringType.getInstance(); }
 ;
 
 PLUS : '+';
@@ -374,21 +459,6 @@ DOUBLE_QUOTE : '"';
 SUPER_EQUALS : '===';
 SUPER_NOT_EQUALS : '!==';
 
-BOOL : 'bool';
-BYTE : 'byte';
-SHORT : 'short';
-INT : 'int';
-LONG : 'long';
-FLOAT : 'float';
-DOUBLE : 'double';
-CHAR : 'char';
-STRING : 'string';
-VOID : 'void';
-
-FALSE : 'false';
-TRUE : 'true';
-NULL : 'null';
-
 VAR : 'var';
 CONST : 'const';
 FUN : 'fun';
@@ -403,15 +473,39 @@ CONTINUE : 'continue';
 BREAK : 'break';
 RETURN : 'return';
 
-SLASHN : '\\n';
-SLASHSLASH : '\\\\';
-SLASHDOLLAR : '\\$';
+BOOL : 'bool';
+BYTE : 'byte';
+SHORT : 'short';
+INT : 'int';
+LONG : 'long';
+FLOAT : 'float';
+DOUBLE : 'double';
+CHAR : 'char';
+STRING : 'string';
+VOID : 'void';
 
-NUMBER_VALUE : [0-9]+ ;
-DOUBLE_NUMBER_VALUE : NUMBER_VALUE DOT NUMBER_VALUE ;
-CHARACTER_VALUE : QUOTE . QUOTE;
-STRINGVALUE : '"' (~('\\' | '$' |'"') | SLASHN | SLASHSLASH | SLASHDOLLAR)* '"';
+PRINT : 'print';
+PRINTLN : 'println';
+READ : 'read';
+
+FALSE : 'false';
+TRUE : 'true';
+NULL : 'null';
+NUMBER_VALUE : [0-9]+;
+
+BOOL_VALUE : FALSE | TRUE;
+INT_VALUE : NUMBER_VALUE;
+LONG_VALUE : NUMBER_VALUE 'LL';
+FLOAT_VALUE : NUMBER_VALUE DOT NUMBER_VALUE 'F';
+DOUBLE_VALUE : NUMBER_VALUE DOT NUMBER_VALUE;
+CHAR_VALUE : '\'' (NO_ESCAPE_SYMBOL | '"' | '\\\'' | ESCAPE_MANAGE_SYMBOL) '\'';
+STRING_VALUE : '"' (NO_ESCAPE_SYMBOL | '\'' | '\\"' | ESCAPE_MANAGE_SYMBOL) '"';
+
+NO_ESCAPE_SYMBOL : [^\\'"];
+ESCAPE_MANAGE_SYMBOL : '\\\\' | '\\r' | '\\n' | '\\f' | '\\t' | '\\v';
 
 IDENTIFIER : [A-Za-z][A-Za-z0-9]*;
 
 WHITESPACE: [ \n\t\r]+ -> skip;
+BLOCK_COMMENT : '/*'.*?'*/' -> skip;
+LINE_COMMENT : '//' ~[\r\n]* -> skip;
