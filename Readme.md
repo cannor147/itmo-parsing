@@ -6,16 +6,16 @@
 
 1. Регулярные выражения в Perl
    * **примерные темы:** _основы синтаксического анализа_
-   * [условия](https://github.com/cannor147/itmo-mt/tree/master/lab01-perl/tasks.pdf), [решение](https://github.com/cannor147/itmo-mt/tree/master/lab01-perl)
+   * [условия](lab01-perl/tasks.pdf), [решение](lab01-perl)
 2. Ручное построение нисходящих парсеров (вариант 6)
    * **примерные темы:** _LL(1)-грамматика, предиктивный синтаксический анализ_
-   * [условия](https://github.com/cannor147/itmo-mt/tree/master/lab02-analyze/tasks.pdf), [решение](https://github.com/cannor147/itmo-mt/tree/master/lab02-analyze)
+   * [условия](lab02-analyze/tasks.pdf), [решение](lab02-analyze)
 3. Автоматические генераторы трансляторов (вариант 7)
    * **примерные темы:** _LL(1)-грамматика, предиктивный синтаксический анализ_
-   * [условия](https://github.com/cannor147/itmo-mt/tree/master/lab03-translation/tasks.pdf), [решение](https://github.com/cannor147/itmo-mt/tree/master/lab03-translation)
+   * [условия](lab03-translation/tasks.pdf), [решение](lab03-translation)
 4. Написание автоматического генератора трансляторов
    * **примерные темы:** _LL(1)-грамматика, построение FIRST и FOLLOW, синтезируемые и наследуемые атрибуты_
-   * [условия](https://github.com/cannor147/itmo-mt/tree/master/lab04-generator/tasks.md), решение пока ещё хранится локально
+   * [условия](lab04-generator/tasks.md), решение пока ещё хранится локально
 
 # Полезные ссылки
 
