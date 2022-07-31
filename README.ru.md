@@ -1,8 +1,8 @@
-# Методы трансляции
+[![en](https://img.shields.io/badge/lang-en-red.svg)](README.md) [![en](https://img.shields.io/badge/lang-ru-blue.svg)](README.ru.md)
 
-## Сведения о курсе
+# Методы Трансляции
 
-Курс читался [Андреем Станкевичем](https://github.com/andrewzta) в Университете ИТМО в 2019 году (year2017, 5 семестр).
+Курс подготовил и прочитал [Андрей Станкевич](https://github.com/andrewzta) в Университете ИТМО в 2019 году (year2017, 5 семестр).
 
 ## Лабораторные работы
 
@@ -15,7 +15,7 @@
 
 * [Страница курса](http://neerc.ifmo.ru/~sta/2019-2020/3-parsing/)
 * ["Методы трансляции" на викиконспектах](https://neerc.ifmo.ru/wiki/index.php?title=%D0%9C%D0%B5%D1%82%D0%BE%D0%B4%D1%8B_%D1%82%D1%80%D0%B0%D0%BD%D1%81%D0%BB%D1%8F%D1%86%D0%B8%D0%B8)
-* [Antlr MEGA Tutorial](https://tomassetti.me/antlr-mega-tutorial/)
+* [Antlr MEGA Tutorial (en)](https://tomassetti.me/antlr-mega-tutorial/)
 
 ## Список рекомендуемой литературы
 
